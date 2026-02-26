@@ -1,0 +1,3 @@
+[submodule "PAAL"]
+	path = PAAL
+	url = https://github.com/ABZerra/PAAL.git
