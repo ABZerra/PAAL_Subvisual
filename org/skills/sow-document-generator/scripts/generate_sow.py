@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover - optional parser
 
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([a-z0-9_]+)\s*}}")
 LIST_NUMBER_PATTERN = re.compile(r"^\d+\.\s+")
+VALID_FEE_TYPES = ("daily", "monthly", "fixed")
 
 DEFAULT_OUTPUT_DIR = Path("docs-output/sow")
 DEFAULT_CONTRACTOR_PROFILE = Path("project-context/sow/contractor_profile.yaml")
@@ -44,7 +45,7 @@ DEFAULT_CLIENT_RESPONSIBILITIES_TEXT = (
     "The Client should provide any required content, resources, feedback, and reviews "
     "on time as necessary."
 )
-DEFAULT_INVOICE_MODEL = "Fixed budget / monthly fee / daily fee"
+DEFAULT_INVOICE_MODEL = "daily fee / fixed budget / monthly fee"
 DEFAULT_INVOICE_PROCEDURES_TEXT = (
     "Invoices will be submitted at the end of every month described in the Period of "
     "Performance. Monthly invoices will reflect the number of working days executed by "
@@ -53,7 +54,12 @@ DEFAULT_INVOICE_PROCEDURES_TEXT = (
     "its invoices, including timesheets for services performed and expense receipts and "
     "justifications for authorised expenses, unless otherwise agreed between the parties."
 )
-DEFAULT_PAYMENT_METHOD = "Wired transfer / On-chain"
+FIXED_PAYMENT_METHOD = "wired transfer / on-chain"
+DEFAULT_FEE_TYPE = "daily"
+DEFAULT_DAILY_FEE = "600€"
+DEFAULT_WEEKLY_SCHEDULE = "5 days/week"
+DATE_OUTPUT_FORMAT = "%d/%m/%Y"
+DATE_INPUT_FORMATS = ("%d/%m/%Y", "%Y-%m-%d")
 
 
 def find_repo_root(start: Path) -> Path:
@@ -96,10 +102,22 @@ def slugify(value: str) -> str:
 
 
 def parse_date(value: str, field_name: str) -> datetime:
-    try:
-        return datetime.strptime(value, "%Y-%m-%d")
-    except ValueError as exc:
-        raise ValueError(f"Invalid date for {field_name}: '{value}'. Expected YYYY-MM-DD.") from exc
+    for date_format in DATE_INPUT_FORMATS:
+        try:
+            return datetime.strptime(value, date_format)
+        except ValueError:
+            continue
+    accepted = "DD/MM/YYYY or YYYY-MM-DD"
+    raise ValueError(f"Invalid date for {field_name}: '{value}'. Expected {accepted}.")
+
+
+def normalize_date(value: str, field_name: str) -> str:
+    if value is None:
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    return parse_date(raw, field_name).strftime(DATE_OUTPUT_FORMAT)
 
 
 def ensure_string_list(value: Any) -> list[str]:
@@ -119,11 +137,19 @@ def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
     for item in value:
         if not isinstance(item, dict):
             raise ValueError("Each fee_schedule item must be an object.")
+        fee_type = str(item.get("fee_type", DEFAULT_FEE_TYPE)).strip().lower() or DEFAULT_FEE_TYPE
+        if fee_type not in VALID_FEE_TYPES:
+            choices = ", ".join(VALID_FEE_TYPES)
+            raise ValueError(f"Invalid fee_type '{fee_type}'. Expected one of: {choices}.")
+        fee = str(item.get("fee", "")).strip()
+        if not fee and fee_type == DEFAULT_FEE_TYPE:
+            fee = DEFAULT_DAILY_FEE
         row = {
             "team": str(item.get("team", "")).strip(),
+            "fee_type": fee_type,
             "role": str(item.get("role", "")).strip(),
-            "fee": str(item.get("fee", "")).strip(),
-            "schedule": str(item.get("schedule", "")).strip(),
+            "fee": fee,
+            "schedule": str(item.get("schedule", "")).strip() or DEFAULT_WEEKLY_SCHEDULE,
             "duration": str(item.get("duration", "")).strip(),
             "cost_estimation": str(item.get("cost_estimation", "")).strip(),
         }
@@ -154,12 +180,12 @@ def normalize_payload(raw: dict[str, Any], contractor_defaults: dict[str, Any]) 
 
     payload: dict[str, Any] = {
         "prepared_for": str(raw.get("prepared_for", "")).strip(),
-        "date_issued": str(raw.get("date_issued", "")).strip(),
+        "date_issued": normalize_date(str(raw.get("date_issued", "")).strip(), "date_issued"),
         "client_legal_name": str(raw.get("client_legal_name", "")).strip(),
         "project_title": str(raw.get("project_title", "")).strip(),
         "project_summary": str(raw.get("project_summary", "")).strip(),
-        "start_date": str(raw.get("start_date", "")).strip(),
-        "end_date": str(raw.get("end_date", "")).strip(),
+        "start_date": normalize_date(str(raw.get("start_date", "")).strip(), "start_date"),
+        "end_date": normalize_date(str(raw.get("end_date", "")).strip(), "end_date"),
         "project_description": str(raw.get("project_description", "")).strip(),
         "project_cost_total": str(raw.get("project_cost_total", "")).strip(),
         "cost_resume_title": str(raw.get("cost_resume_title", "")).strip(),
@@ -173,15 +199,17 @@ def normalize_payload(raw: dict[str, Any], contractor_defaults: dict[str, Any]) 
         "bill_to_email": str(
             bill_to.get("email", raw.get("bill_to_email", ""))
         ).strip(),
-        "company_signing_date": str(
-            execution.get("company_signing_date", raw.get("company_signing_date", ""))
-        ).strip(),
+        "company_signing_date": normalize_date(
+            execution.get("company_signing_date", raw.get("company_signing_date", "")),
+            "company_signing_date",
+        ),
         "client_signatory_name": str(
             execution.get("client_name", raw.get("client_signatory_name", ""))
         ).strip(),
-        "client_signing_date": str(
-            execution.get("client_signing_date", raw.get("client_signing_date", ""))
-        ).strip(),
+        "client_signing_date": normalize_date(
+            execution.get("client_signing_date", raw.get("client_signing_date", "")),
+            "client_signing_date",
+        ),
         "client_address": str(
             execution.get("client_address", raw.get("client_address", ""))
         ).strip(),
@@ -189,10 +217,7 @@ def normalize_payload(raw: dict[str, Any], contractor_defaults: dict[str, Any]) 
             overrides.get("invoice_model", raw.get("invoice_model", DEFAULT_INVOICE_MODEL))
         ).strip()
         or DEFAULT_INVOICE_MODEL,
-        "payment_method": str(
-            overrides.get("payment_method", raw.get("payment_method", DEFAULT_PAYMENT_METHOD))
-        ).strip()
-        or DEFAULT_PAYMENT_METHOD,
+        "payment_method": FIXED_PAYMENT_METHOD,
         "statement_of_confidentiality": str(
             overrides.get(
                 "statement_of_confidentiality",
@@ -224,8 +249,12 @@ def normalize_payload(raw: dict[str, Any], contractor_defaults: dict[str, Any]) 
         "phone": str(contractor.get("phone", "")).strip(),
         "email": str(contractor.get("email", "")).strip(),
         "website": str(contractor.get("website", "")).strip(),
-        "prepared_by_name": str(contractor.get("prepared_by_name", "")).strip(),
-        "prepared_by_role": str(contractor.get("prepared_by_role", "")).strip(),
+        "prepared_by_name": str(
+            raw.get("prepared_by_name", contractor.get("prepared_by_name", ""))
+        ).strip(),
+        "prepared_by_role": str(
+            raw.get("prepared_by_role", contractor.get("prepared_by_role", ""))
+        ).strip(),
         "payment_company_name": str(
             payment.get("company_name", contractor.get("company_name", ""))
         ).strip(),
@@ -302,9 +331,10 @@ def format_fee_schedule_rows(rows: list[dict[str, str]]) -> str:
     rendered = []
     for row in rows:
         rendered.append(
-            "| {team} | {role} | {fee} | {schedule} | {duration} | {cost_estimation} |".format(
+            "| {team} | {role} | {fee_type} | {fee} | {schedule} | {duration} | {cost_estimation} |".format(
                 team=row.get("team", ""),
                 role=row.get("role", ""),
+                fee_type=row.get("fee_type", "").title(),
                 fee=row.get("fee", ""),
                 schedule=row.get("schedule", ""),
                 duration=row.get("duration", ""),
@@ -510,8 +540,7 @@ def prompt_date(prompt: str, default: str | None = None) -> str:
     while True:
         value = prompt_text(prompt, required=True, default=default)
         try:
-            parse_date(value, prompt)
-            return value
+            return normalize_date(value, prompt)
         except ValueError as exc:
             print(str(exc))
 
@@ -542,7 +571,45 @@ def prompt_multiline(prompt: str, default: str) -> str:
     return "\n".join(lines)
 
 
-def prompt_list(prompt: str, required: bool = False) -> list[str]:
+def prompt_choice(prompt: str, choices: tuple[str, ...], default: str) -> str:
+    options = "/".join(choices)
+    while True:
+        value = prompt_text(f"{prompt} ({options})", default=default).lower()
+        if value in choices:
+            return value
+        print(f"Please choose one of: {options}.")
+
+
+def maybe_prompt_text(
+    prompt: str,
+    value: Any,
+    required: bool,
+    only_missing: bool,
+    fallback_default: str | None = None,
+) -> str:
+    existing = "" if value is None else str(value).strip()
+    if only_missing and existing:
+        return existing
+    default = existing or fallback_default
+    return prompt_text(prompt, required=required, default=default if default else None)
+
+
+def maybe_prompt_date(prompt: str, value: Any, only_missing: bool) -> str:
+    existing = "" if value is None else str(value).strip()
+    if only_missing and existing:
+        return existing
+    return prompt_date(prompt, default=existing or None)
+
+
+def prompt_list(
+    prompt: str,
+    required: bool = False,
+    default_items: list[str] | None = None,
+    only_missing: bool = False,
+) -> list[str]:
+    if default_items:
+        if only_missing or prompt_yes_no(f"Use existing values for {prompt}?", default=True):
+            return default_items
     print(f"{prompt} (one per line, finish with empty line)")
     items: list[str] = []
     while True:
@@ -552,11 +619,22 @@ def prompt_list(prompt: str, required: bool = False) -> list[str]:
         items.append(value)
     if required and not items:
         print("At least one item is required.")
-        return prompt_list(prompt, required=required)
+        return prompt_list(prompt, required=required, default_items=default_items, only_missing=only_missing)
     return items
 
 
-def prompt_fee_schedule_rows() -> list[dict[str, str]]:
+def prompt_fee_schedule_rows(
+    default_rows: list[dict[str, Any]] | None = None,
+    only_missing: bool = False,
+) -> list[dict[str, str]]:
+    if default_rows:
+        try:
+            normalized_defaults = ensure_fee_rows(default_rows)
+        except ValueError:
+            normalized_defaults = []
+        if normalized_defaults and (only_missing or prompt_yes_no("Use existing fee schedule rows?", default=True)):
+            return normalized_defaults
+
     while True:
         raw_count = input("How many fee schedule rows? [min 1]: ").strip()
         if not raw_count.isdigit() or int(raw_count) < 1:
@@ -568,16 +646,26 @@ def prompt_fee_schedule_rows() -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for index in range(1, count + 1):
         print(f"Fee row {index}")
+        fee_type = prompt_choice("  Fee type", VALID_FEE_TYPES, DEFAULT_FEE_TYPE)
         rows.append(
             {
                 "team": prompt_text("  Team"),
+                "fee_type": fee_type,
                 "role": prompt_text("  Role", required=True),
-                "fee": prompt_text("  Fee", required=True),
-                "schedule": prompt_text("  Schedule", required=True),
+                "fee": prompt_text(
+                    "  Fee",
+                    required=fee_type != DEFAULT_FEE_TYPE,
+                    default=DEFAULT_DAILY_FEE if fee_type == DEFAULT_FEE_TYPE else None,
+                ),
+                "schedule": prompt_text("  Schedule", required=True, default=DEFAULT_WEEKLY_SCHEDULE),
                 "duration": prompt_text("  Duration", required=True),
                 "cost_estimation": prompt_text("  Costs Estimation", required=True),
             }
         )
+    print("\nFee Schedule Table Preview")
+    print("| Team | Role | Fee Type | Fee | Schedule | Duration | Costs Estimation |")
+    print("| --- | --- | --- | --- | --- | --- | --- |")
+    print(format_fee_schedule_rows(rows))
     return rows
 
 
@@ -616,40 +704,122 @@ def collect_contractor_overrides(defaults: dict[str, Any]) -> dict[str, Any]:
     return overrides
 
 
-def collect_interactive_input(contractor_defaults: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
-    raw: dict[str, Any] = {"overrides": {}, "bill_to": {}, "execution": {}}
+def collect_interactive_input(
+    contractor_defaults: dict[str, Any],
+    schema: dict[str, Any],
+    prefill: dict[str, Any] | None = None,
+    only_missing: bool = False,
+) -> dict[str, Any]:
+    source = prefill or {}
+    source_overrides = source.get("overrides", {}) if isinstance(source.get("overrides", {}), dict) else {}
+    source_bill_to = source.get("bill_to", {}) if isinstance(source.get("bill_to", {}), dict) else {}
+    source_execution = source.get("execution", {}) if isinstance(source.get("execution", {}), dict) else {}
+    raw: dict[str, Any] = {
+        "overrides": dict(source_overrides),
+        "bill_to": dict(source_bill_to),
+        "execution": dict(source_execution),
+    }
     section_names = [s.get("name") for s in schema.get("sections", []) if isinstance(s, dict)]
 
     if "contractor_profile" in section_names:
         print("\n== Contractor Profile ==")
-        raw["contractor_profile_overrides"] = collect_contractor_overrides(contractor_defaults)
+        if only_missing:
+            raw["contractor_profile_overrides"] = source.get("contractor_profile_overrides", {})
+        else:
+            raw["contractor_profile_overrides"] = collect_contractor_overrides(contractor_defaults)
 
     if "prepared_for_and_issue" in section_names:
         print("\n== Prepared For and Date Issued ==")
-        raw["prepared_for"] = prompt_text("Prepared For", required=True)
-        raw["date_issued"] = prompt_date("Date Issued (YYYY-MM-DD)")
+        raw["prepared_for"] = maybe_prompt_text(
+            "Prepared For",
+            source.get("prepared_for", ""),
+            required=True,
+            only_missing=only_missing,
+        )
+        raw["date_issued"] = maybe_prompt_date(
+            "Date Issued (DD/MM/YYYY)",
+            source.get("date_issued", ""),
+            only_missing=only_missing,
+        )
+
+        prepared_by_default = str(source.get("prepared_by_name", "")).strip() or str(
+            contractor_defaults.get("prepared_by_name", "")
+        )
+        prepared_role_default = str(source.get("prepared_by_role", "")).strip() or str(
+            contractor_defaults.get("prepared_by_role", "")
+        )
+        raw["prepared_by_name"] = maybe_prompt_text(
+            "Prepared By name",
+            source.get("prepared_by_name", ""),
+            required=True,
+            only_missing=only_missing,
+            fallback_default=prepared_by_default,
+        )
+        raw["prepared_by_role"] = maybe_prompt_text(
+            "Prepared By role",
+            source.get("prepared_by_role", ""),
+            required=True,
+            only_missing=only_missing,
+            fallback_default=prepared_role_default,
+        )
 
     if "introduction_background" in section_names:
         print("\n== Introduction and Background ==")
-        raw["client_legal_name"] = prompt_text("Client legal name", required=True)
-        raw["project_title"] = prompt_text("Project title", required=True)
-        raw["project_summary"] = prompt_text(
-            "Project summary sentence (used in section 1)", required=True
+        raw["client_legal_name"] = maybe_prompt_text(
+            "Client legal name",
+            source.get("client_legal_name", ""),
+            required=True,
+            only_missing=only_missing,
+        )
+        raw["project_title"] = maybe_prompt_text(
+            "Project title",
+            source.get("project_title", ""),
+            required=True,
+            only_missing=only_missing,
+        )
+        raw["project_summary"] = maybe_prompt_text(
+            "Project summary sentence (used in section 1)",
+            source.get("project_summary", ""),
+            required=True,
+            only_missing=only_missing,
         )
 
     if "period_of_performance" in section_names:
         print("\n== Period of Performance ==")
-        raw["start_date"] = prompt_date("Start Date (YYYY-MM-DD)")
-        raw["end_date"] = prompt_date("End Date (YYYY-MM-DD)")
+        raw["start_date"] = maybe_prompt_date(
+            "Start Date (DD/MM/YYYY)",
+            source.get("start_date", ""),
+            only_missing=only_missing,
+        )
+        raw["end_date"] = maybe_prompt_date(
+            "End Date (DD/MM/YYYY)",
+            source.get("end_date", ""),
+            only_missing=only_missing,
+        )
+        default_non_working_days = ensure_string_list(source.get("non_working_days", []))
         raw["non_working_days"] = prompt_list(
-            "Non-working days (optional, use YYYY-MM-DD where possible)", required=False
+            "Non-working days (optional, use DD/MM/YYYY where possible)",
+            required=False,
+            default_items=default_non_working_days,
+            only_missing=only_missing,
         )
 
     if "scope_of_work" in section_names:
         print("\n== Scope of Work ==")
-        raw["project_description"] = prompt_text("Project description", required=True)
-        raw["deliverables"] = prompt_list("Deliverables", required=True)
-        if prompt_yes_no("Customize Deliveries clause?", default=False):
+        raw["project_description"] = maybe_prompt_text(
+            "Project description",
+            source.get("project_description", ""),
+            required=True,
+            only_missing=only_missing,
+        )
+        default_deliverables = ensure_string_list(source.get("deliverables", []))
+        raw["deliverables"] = prompt_list(
+            "Deliverables",
+            required=True,
+            default_items=default_deliverables,
+            only_missing=only_missing,
+        )
+        if not only_missing and prompt_yes_no("Customize Deliveries clause?", default=False):
             raw["overrides"]["deliveries_clause"] = prompt_multiline(
                 "Enter Deliveries clause",
                 DEFAULT_DELIVERIES_CLAUSE,
@@ -657,20 +827,55 @@ def collect_interactive_input(contractor_defaults: dict[str, Any], schema: dict[
 
     if "fee_schedule" in section_names:
         print("\n== Fee Schedule ==")
-        raw["fee_schedule"] = prompt_fee_schedule_rows()
-        raw["project_cost_total"] = prompt_text("Project costs total", required=True)
-        raw["cost_resume_title"] = prompt_text("Costs resume title", required=True)
-        raw["cost_resume_value"] = prompt_text("Costs resume value", required=True)
+        raw["fee_schedule"] = prompt_fee_schedule_rows(
+            default_rows=source.get("fee_schedule") if isinstance(source.get("fee_schedule"), list) else None,
+            only_missing=only_missing,
+        )
+        raw["project_cost_total"] = maybe_prompt_text(
+            "Project costs total",
+            source.get("project_cost_total", ""),
+            required=True,
+            only_missing=only_missing,
+        )
+        raw["cost_resume_title"] = maybe_prompt_text(
+            "Costs resume title",
+            source.get("cost_resume_title", ""),
+            required=True,
+            only_missing=only_missing,
+            fallback_default=str(source.get("project_title", "")).strip() or None,
+        )
+        raw["cost_resume_value"] = maybe_prompt_text(
+            "Costs resume value",
+            source.get("cost_resume_value", ""),
+            required=True,
+            only_missing=only_missing,
+            fallback_default=str(source.get("project_cost_total", "")).strip() or None,
+        )
 
     if "bill_to" in section_names:
         print("\n== Bill To ==")
         raw["bill_to"] = {
-            "client": prompt_text("Bill To client", required=True),
-            "address": prompt_text("Bill To address", required=True),
-            "email": prompt_text("Bill To email", required=True),
+            "client": maybe_prompt_text(
+                "Bill To client",
+                source_bill_to.get("client", source.get("bill_to_client", "")),
+                required=True,
+                only_missing=only_missing,
+            ),
+            "address": maybe_prompt_text(
+                "Bill To address",
+                source_bill_to.get("address", source.get("bill_to_address", "")),
+                required=True,
+                only_missing=only_missing,
+            ),
+            "email": maybe_prompt_text(
+                "Bill To email",
+                source_bill_to.get("email", source.get("bill_to_email", "")),
+                required=True,
+                only_missing=only_missing,
+            ),
         }
 
-    if "legal_boilerplate" in section_names:
+    if "legal_boilerplate" in section_names and not only_missing:
         print("\n== Legal and Invoice Boilerplate ==")
         if prompt_yes_no("Customize statement of confidentiality?", default=False):
             raw["overrides"]["statement_of_confidentiality"] = prompt_multiline(
@@ -693,20 +898,32 @@ def collect_interactive_input(contractor_defaults: dict[str, Any], schema: dict[
                 "Enter Invoice Procedures text",
                 DEFAULT_INVOICE_PROCEDURES_TEXT,
             )
-        if prompt_yes_no("Customize payment method?", default=False):
-            raw["overrides"]["payment_method"] = prompt_text(
-                "Payment method",
-                required=True,
-                default=DEFAULT_PAYMENT_METHOD,
-            )
 
     if "execution" in section_names:
         print("\n== Execution and Signatures ==")
         raw["execution"] = {
-            "company_signing_date": prompt_date("Company signing date (YYYY-MM-DD)"),
-            "client_name": prompt_text("Client signatory name", required=True),
-            "client_signing_date": prompt_date("Client signing date (YYYY-MM-DD)"),
-            "client_address": prompt_text("Client signatory address", required=True),
+            "company_signing_date": maybe_prompt_date(
+                "Company signing date (DD/MM/YYYY)",
+                source_execution.get("company_signing_date", source.get("company_signing_date", "")),
+                only_missing=only_missing,
+            ),
+            "client_name": maybe_prompt_text(
+                "Client signatory name",
+                source_execution.get("client_name", source.get("client_signatory_name", "")),
+                required=True,
+                only_missing=only_missing,
+            ),
+            "client_signing_date": maybe_prompt_date(
+                "Client signing date (DD/MM/YYYY)",
+                source_execution.get("client_signing_date", source.get("client_signing_date", "")),
+                only_missing=only_missing,
+            ),
+            "client_address": maybe_prompt_text(
+                "Client signatory address",
+                source_execution.get("client_address", source.get("client_address", "")),
+                required=True,
+                only_missing=only_missing,
+            ),
         }
 
     return raw
@@ -775,6 +992,14 @@ def main() -> int:
             raw_payload = collect_interactive_input(contractor_profile, schema)
         else:
             raw_payload = load_structured_file(args.input)
+            # Input mode still offers a quick completion flow for missing details.
+            if sys.stdin.isatty():
+                raw_payload = collect_interactive_input(
+                    contractor_profile,
+                    schema,
+                    prefill=raw_payload,
+                    only_missing=True,
+                )
 
         payload = normalize_payload(raw_payload, contractor_profile)
         markdown = render_and_validate(template_text, payload, schema)

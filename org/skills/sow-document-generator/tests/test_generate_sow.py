@@ -47,21 +47,24 @@ class TestGenerateSow(unittest.TestCase):
     def base_raw_payload(self) -> dict:
         return {
             "prepared_for": "Acme Corp",
-            "date_issued": "2026-03-01",
+            "date_issued": "01/03/2026",
+            "prepared_by_name": "Roberto Machado",
+            "prepared_by_role": "CEO",
             "client_legal_name": "Acme Corp, Inc.",
             "project_title": "Website Redesign",
             "project_summary": "website redesign and development",
-            "start_date": "2026-03-10",
-            "end_date": "2026-04-10",
-            "non_working_days": ["2026-03-19"],
+            "start_date": "10/03/2026",
+            "end_date": "10/04/2026",
+            "non_working_days": ["19/03/2026"],
             "project_description": "Redesign and implementation.",
             "deliverables": ["Design", "Development"],
             "fee_schedule": [
                 {
                     "team": "Product",
+                    "fee_type": "daily",
                     "role": "Product Manager",
-                    "fee": "850 EUR/day",
-                    "schedule": "2 days/week",
+                    "fee": "600€",
+                    "schedule": "5 days/week",
                     "duration": "4 weeks",
                     "cost_estimation": "6800 EUR",
                 }
@@ -75,9 +78,9 @@ class TestGenerateSow(unittest.TestCase):
                 "email": "finance@acme.com",
             },
             "execution": {
-                "company_signing_date": "2026-03-01",
+                "company_signing_date": "01/03/2026",
                 "client_name": "Acme Corp, Inc.",
-                "client_signing_date": "2026-03-01",
+                "client_signing_date": "01/03/2026",
                 "client_address": "100 Market Street",
             },
         }
@@ -103,6 +106,7 @@ class TestGenerateSow(unittest.TestCase):
                 "client_address",
             ],
             "required_fee_row_fields": [
+                "fee_type",
                 "role",
                 "fee",
                 "schedule",
@@ -134,37 +138,46 @@ class TestGenerateSow(unittest.TestCase):
 
     def test_invalid_date_range_fails_validation(self) -> None:
         raw = self.base_raw_payload()
-        raw["start_date"] = "2026-05-01"
-        raw["end_date"] = "2026-04-01"
+        raw["start_date"] = "01/05/2026"
+        raw["end_date"] = "01/04/2026"
         payload = self.mod.normalize_payload(raw, self.contractor_defaults())
         with self.assertRaises(ValueError) as ctx:
             self.mod.validate_payload(payload, self.schema())
         self.assertIn("start_date must be <=", str(ctx.exception))
+
+    def test_iso_date_input_is_normalized_to_ddmmyyyy(self) -> None:
+        raw = self.base_raw_payload()
+        raw["date_issued"] = "2026-03-01"
+        payload = self.mod.normalize_payload(raw, self.contractor_defaults())
+        self.assertEqual(payload["date_issued"], "01/03/2026")
 
     def test_dynamic_fee_rows_render(self) -> None:
         raw = self.base_raw_payload()
         raw["fee_schedule"] = [
             {
                 "team": "Product",
+                "fee_type": "daily",
                 "role": "Product Manager",
-                "fee": "850 EUR/day",
-                "schedule": "2 days/week",
+                "fee": "600€",
+                "schedule": "5 days/week",
                 "duration": "4 weeks",
                 "cost_estimation": "6800 EUR",
             },
             {
                 "team": "Design",
+                "fee_type": "daily",
                 "role": "Product Designer",
-                "fee": "850 EUR/day",
-                "schedule": "2 days/week",
+                "fee": "600€",
+                "schedule": "5 days/week",
                 "duration": "4 weeks",
                 "cost_estimation": "6800 EUR",
             },
             {
                 "team": "Engineering",
+                "fee_type": "daily",
                 "role": "Developer",
-                "fee": "850 EUR/day",
-                "schedule": "4 days/week",
+                "fee": "600€",
+                "schedule": "5 days/week",
                 "duration": "4 weeks",
                 "cost_estimation": "13600 EUR",
             },
@@ -174,6 +187,23 @@ class TestGenerateSow(unittest.TestCase):
         self.assertEqual(rows.count("\n"), 2)
         self.assertIn("Product Designer", rows)
         self.assertIn("Developer", rows)
+        self.assertIn("| Daily | 600€ | 5 days/week |", rows)
+
+    def test_daily_fee_defaults_are_applied(self) -> None:
+        raw = self.base_raw_payload()
+        raw["fee_schedule"] = [
+            {
+                "team": "Product",
+                "fee_type": "daily",
+                "role": "Product Manager",
+                "duration": "4 weeks",
+                "cost_estimation": "12000 EUR",
+            }
+        ]
+        payload = self.mod.normalize_payload(raw, self.contractor_defaults())
+        row = payload["fee_schedule"][0]
+        self.assertEqual(row["fee"], "600€")
+        self.assertEqual(row["schedule"], "5 days/week")
 
     def test_legal_override_replaces_default(self) -> None:
         raw = self.base_raw_payload()
@@ -190,6 +220,12 @@ class TestGenerateSow(unittest.TestCase):
             self.mod.DEFAULT_CONFIDENTIALITY_TEXT,
         )
 
+    def test_payment_method_is_fixed(self) -> None:
+        raw = self.base_raw_payload()
+        raw["overrides"] = {"payment_method": "cash"}
+        payload = self.mod.normalize_payload(raw, self.contractor_defaults())
+        self.assertEqual(payload["payment_method"], "wired transfer / on-chain")
+
     def test_contractor_override_applies_to_this_payload(self) -> None:
         raw = self.base_raw_payload()
         raw["contractor_profile_overrides"] = {
@@ -199,6 +235,14 @@ class TestGenerateSow(unittest.TestCase):
         payload = self.mod.normalize_payload(raw, self.contractor_defaults())
         self.assertEqual(payload["company_name"], "Custom Co")
         self.assertEqual(payload["payment_iban"], "CUSTOM-IBAN")
+
+    def test_prepared_by_can_be_overridden_per_document(self) -> None:
+        raw = self.base_raw_payload()
+        raw["prepared_by_name"] = "Ana Silva"
+        raw["prepared_by_role"] = "Head of Delivery"
+        payload = self.mod.normalize_payload(raw, self.contractor_defaults())
+        self.assertEqual(payload["prepared_by_name"], "Ana Silva")
+        self.assertEqual(payload["prepared_by_role"], "Head of Delivery")
 
     def test_write_outputs_respects_custom_output_dir(self) -> None:
         payload = self.mod.normalize_payload(self.base_raw_payload(), self.contractor_defaults())
@@ -232,7 +276,7 @@ class TestGenerateSow(unittest.TestCase):
         markdown = self.mod.render_and_validate(template, payload, self.schema())
         expected = (
             "### Prepared For\nAcme Corp\n"
-            "### Date Issued\n2026-03-01\n"
+            "### Date Issued\n01/03/2026\n"
             "1. Design\n2. Development\n"
         )
         self.assertEqual(markdown, expected)

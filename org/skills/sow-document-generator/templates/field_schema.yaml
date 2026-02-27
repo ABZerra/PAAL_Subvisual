@@ -24,16 +24,23 @@
     "deliveries_clause",
     "client_responsibilities_text",
     "invoice_procedures_text",
-    "payment_method",
     "company_address"
   ],
   "required_fee_row_fields": [
+    "fee_type",
     "role",
     "fee",
     "schedule",
     "duration",
     "cost_estimation"
   ],
+  "defaults": {
+    "fee_type": "daily",
+    "daily_fee": "600€",
+    "schedule": "5 days/week",
+    "payment_method": "wired transfer / on-chain",
+    "date_format": "DD/MM/YYYY"
+  },
   "sections": [
     {
       "name": "contractor_profile",

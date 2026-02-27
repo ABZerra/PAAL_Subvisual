@@ -14,7 +14,7 @@ Acme Corp
 
 ### Date Issued
 
-2026-03-02
+02/03/2026
 
 ## 1. Introduction & Background
 
@@ -22,9 +22,9 @@ This Statement of Work (hereinafter called the "SOW"), is an agreement between S
 
 ## 4. Period of performance and fee schedule
 
-| Team | Role | Fee | Schedule | Duration | Costs Estimation |
-| --- | --- | --- | --- | --- | --- |
-| Product | Product Manager | 850 EUR/day | 2 days/week | 4 weeks | 6800 EUR |
-| Engineering | Developer | 850 EUR/day | 4 days/week | 4 weeks | 13600 EUR |
-| Project Costs | - | - | - | - | 20400 EUR |
+| Team | Role | Fee Type | Fee | Schedule | Duration | Costs Estimation |
+| --- | --- | --- | --- | --- | --- | --- |
+| Product | Product Manager | Daily | 600€ | 5 days/week | 4 weeks | 6800 EUR |
+| Engineering | Developer | Daily | 600€ | 5 days/week | 4 weeks | 13600 EUR |
+| Project Costs | - | - | - | - | - | 20400 EUR |
 ```
