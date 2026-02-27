@@ -22,9 +22,9 @@ This Statement of Work (hereinafter called the "SOW"), is an agreement between S
 
 ## 4. Period of performance and fee schedule
 
-| Team | Role | Fee Type | Fee | Schedule | Duration | Costs Estimation |
-| --- | --- | --- | --- | --- | --- | --- |
-| Product | Product Manager | Daily | 600€ | 5 days/week | 4 weeks | 6800 EUR |
-| Engineering | Developer | Daily | 600€ | 5 days/week | 4 weeks | 13600 EUR |
-| Project Costs | - | - | - | - | - | 20400 EUR |
+| Role | Fee | Allocation | duration | Estimation |
+| --- | --- | --- | --- | --- |
+| Product Manager | 600€ | 5 days/week | 4 weeks | 6800 EUR |
+| Developer | 600€ | 5 days/week | 4 weeks | 13600 EUR |
+| Totals | 1200€ | 10 days/week | 8 weeks | 20400 EUR |
 ```

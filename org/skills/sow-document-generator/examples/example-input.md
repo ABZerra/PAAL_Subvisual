@@ -29,22 +29,20 @@ Structured input file example (`--input sample.json`):
   ],
   "fee_schedule": [
     {
-      "team": "Product",
       "fee_type": "daily",
       "role": "Product Manager",
       "fee": "600€",
-      "schedule": "5 days/week",
+      "allocation": "5 days/week",
       "duration": "4 weeks",
-      "cost_estimation": "6800 EUR"
+      "estimation": "6800 EUR"
     },
     {
-      "team": "Engineering",
       "fee_type": "daily",
       "role": "Developer",
       "fee": "600€",
-      "schedule": "5 days/week",
+      "allocation": "5 days/week",
       "duration": "4 weeks",
-      "cost_estimation": "13600 EUR"
+      "estimation": "13600 EUR"
     }
   ],
   "project_cost_total": "20400 EUR",

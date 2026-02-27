@@ -84,10 +84,10 @@ Subvisual team is in a 4 days-workweek schedule. Fridays are for internal and pe
 
 ---
 
-| Team | Role | Fee Type | Fee | Schedule | Duration | Costs Estimation |
-| --- | --- | --- | --- | --- | --- | --- |
+| Role | Fee | Allocation | duration | Estimation |
+| --- | --- | --- | --- | --- |
 {{fee_schedule_rows}}
-| Project Costs | - | - | - | - | - | {{project_cost_total}} |
+{{fee_totals_row}}
 
 ## 5. Client Responsibilities
 

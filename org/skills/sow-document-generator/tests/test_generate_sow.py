@@ -60,13 +60,12 @@ class TestGenerateSow(unittest.TestCase):
             "deliverables": ["Design", "Development"],
             "fee_schedule": [
                 {
-                    "team": "Product",
                     "fee_type": "daily",
                     "role": "Product Manager",
                     "fee": "600€",
-                    "schedule": "5 days/week",
+                    "allocation": "5 days/week",
                     "duration": "4 weeks",
-                    "cost_estimation": "6800 EUR",
+                    "estimation": "6800 EUR",
                 }
             ],
             "project_cost_total": "6800 EUR",
@@ -109,9 +108,9 @@ class TestGenerateSow(unittest.TestCase):
                 "fee_type",
                 "role",
                 "fee",
-                "schedule",
+                "allocation",
                 "duration",
-                "cost_estimation",
+                "estimation",
             ],
         }
 
@@ -155,31 +154,28 @@ class TestGenerateSow(unittest.TestCase):
         raw = self.base_raw_payload()
         raw["fee_schedule"] = [
             {
-                "team": "Product",
                 "fee_type": "daily",
                 "role": "Product Manager",
                 "fee": "600€",
-                "schedule": "5 days/week",
+                "allocation": "5 days/week",
                 "duration": "4 weeks",
-                "cost_estimation": "6800 EUR",
+                "estimation": "6800 EUR",
             },
             {
-                "team": "Design",
                 "fee_type": "daily",
                 "role": "Product Designer",
                 "fee": "600€",
-                "schedule": "5 days/week",
+                "allocation": "5 days/week",
                 "duration": "4 weeks",
-                "cost_estimation": "6800 EUR",
+                "estimation": "6800 EUR",
             },
             {
-                "team": "Engineering",
                 "fee_type": "daily",
                 "role": "Developer",
                 "fee": "600€",
-                "schedule": "5 days/week",
+                "allocation": "5 days/week",
                 "duration": "4 weeks",
-                "cost_estimation": "13600 EUR",
+                "estimation": "13600 EUR",
             },
         ]
         payload = self.mod.normalize_payload(raw, self.contractor_defaults())
@@ -187,23 +183,46 @@ class TestGenerateSow(unittest.TestCase):
         self.assertEqual(rows.count("\n"), 2)
         self.assertIn("Product Designer", rows)
         self.assertIn("Developer", rows)
-        self.assertIn("| Daily | 600€ | 5 days/week |", rows)
+        self.assertIn("| 600€ | 5 days/week | 4 weeks | 13600 EUR |", rows)
 
     def test_daily_fee_defaults_are_applied(self) -> None:
         raw = self.base_raw_payload()
         raw["fee_schedule"] = [
             {
-                "team": "Product",
                 "fee_type": "daily",
                 "role": "Product Manager",
                 "duration": "4 weeks",
-                "cost_estimation": "12000 EUR",
+                "estimation": "12000 EUR",
             }
         ]
         payload = self.mod.normalize_payload(raw, self.contractor_defaults())
         row = payload["fee_schedule"][0]
         self.assertEqual(row["fee"], "600€")
-        self.assertEqual(row["schedule"], "5 days/week")
+        self.assertEqual(row["allocation"], "5 days/week")
+
+    def test_fee_totals_row_is_computed(self) -> None:
+        raw = self.base_raw_payload()
+        raw["fee_schedule"] = [
+            {
+                "fee_type": "daily",
+                "role": "Product Manager",
+                "fee": "600€",
+                "allocation": "5 days/week",
+                "duration": "4 weeks",
+                "estimation": "6800 EUR",
+            },
+            {
+                "fee_type": "daily",
+                "role": "Developer",
+                "fee": "600€",
+                "allocation": "5 days/week",
+                "duration": "4 weeks",
+                "estimation": "13600 EUR",
+            },
+        ]
+        payload = self.mod.normalize_payload(raw, self.contractor_defaults())
+        totals = self.mod.format_fee_totals_row(payload["fee_schedule"])
+        self.assertEqual(totals, "| Totals | 1200€ | 10 days/week | 8 weeks | 20400 EUR |")
 
     def test_legal_override_replaces_default(self) -> None:
         raw = self.base_raw_payload()
