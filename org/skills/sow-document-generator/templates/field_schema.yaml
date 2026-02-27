@@ -27,6 +27,7 @@
     "company_address"
   ],
   "required_fee_row_fields": [
+    "team",
     "fee_type",
     "role",
     "fee",

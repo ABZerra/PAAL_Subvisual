@@ -84,8 +84,8 @@ Subvisual team is in a 4 days-workweek schedule. Fridays are for internal and pe
 
 ---
 
-| Role | Fee | Allocation | duration | Estimation |
-| --- | --- | --- | --- | --- |
+| Team | Role | Fee | Allocation | Duration | Costs Estimation |
+| --- | --- | --- | --- | --- | --- |
 {{fee_schedule_rows}}
 {{fee_totals_row}}
 

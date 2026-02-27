@@ -58,6 +58,11 @@ FIXED_PAYMENT_METHOD = "wired transfer / on-chain"
 DEFAULT_FEE_TYPE = "daily"
 DEFAULT_DAILY_FEE = "600€"
 DEFAULT_WEEKLY_SCHEDULE = "5 days/week"
+DEFAULT_FEE_FALLBACK_TEXT = "to be defined"
+DEFAULT_DURATION = "to be defined"
+DEFAULT_ESTIMATION = "to be defined"
+DEFAULT_ROLE = "to be defined"
+DEFAULT_TEAM = "1"
 DATE_OUTPUT_FORMAT = "%d/%m/%Y"
 DATE_INPUT_FORMATS = ("%d/%m/%Y", "%Y-%m-%d")
 
@@ -138,12 +143,111 @@ def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
         raise ValueError("fee_schedule must be a list or multiline string.")
     rows: list[dict[str, str]] = []
 
+    def infer_fee_type(raw_text: str) -> str:
+        lowered = raw_text.lower()
+        if any(token in lowered for token in ("monthly", "per month", "/month")):
+            return "monthly"
+        if any(token in lowered for token in ("fixed", "flat fee", "flat-rate", "flat rate")):
+            return "fixed"
+        return DEFAULT_FEE_TYPE
+
+    def infer_role(raw_text: str) -> str:
+        lowered = raw_text.lower()
+        if "to all" in lowered or "all roles" in lowered:
+            return "All roles"
+        digit_match = re.search(r"\d", raw_text)
+        if digit_match:
+            prefix = raw_text[: digit_match.start()].strip(" -,:")
+            if prefix and prefix.lower() not in {"for", "to", "at"}:
+                return prefix
+        return DEFAULT_ROLE
+
+    def infer_fee(raw_text: str, fee_type: str) -> str:
+        currency_match = re.search(
+            r"([€$£])?\s*(\d+(?:[.,]\d+)?)\s*(€|eur|usd|gbp|dollars?|euros?|pounds?)?",
+            raw_text,
+            flags=re.IGNORECASE,
+        )
+        if not currency_match:
+            if fee_type == DEFAULT_FEE_TYPE:
+                return DEFAULT_DAILY_FEE
+            return DEFAULT_FEE_FALLBACK_TEXT
+
+        amount = currency_match.group(2).replace(",", ".")
+        prefix = (currency_match.group(1) or "").strip()
+        suffix = (currency_match.group(3) or "").strip().lower()
+        if prefix:
+            formatted = f"{amount}{prefix}"
+        elif suffix in {"€", "eur", "euro", "euros"}:
+            formatted = f"{amount}€"
+        elif suffix in {"$", "usd", "dollar", "dollars"}:
+            formatted = f"{amount}$"
+        elif suffix in {"£", "gbp", "pound", "pounds"}:
+            formatted = f"{amount}£"
+        else:
+            formatted = amount
+            if fee_type == DEFAULT_FEE_TYPE:
+                formatted = f"{formatted}€"
+
+        lowered = raw_text.lower()
+        if any(token in lowered for token in ("/day", "per day", "daily")):
+            return f"{formatted}/day"
+        if any(token in lowered for token in ("/month", "per month", "monthly")):
+            return f"{formatted}/month"
+        return formatted
+
+    def infer_allocation(raw_text: str) -> str:
+        lowered = raw_text.lower()
+        allocation_match = re.search(r"\b(\d+)\s*days?\s*(?:/|per)\s*week\b", lowered)
+        if allocation_match:
+            return f"{allocation_match.group(1)} days/week"
+        if "full-time" in lowered or "full time" in lowered:
+            return "Full-time"
+        if "half-time" in lowered or "half time" in lowered:
+            return "Half-time"
+        return DEFAULT_WEEKLY_SCHEDULE
+
+    def infer_duration(raw_text: str) -> str:
+        lowered = raw_text.lower()
+        for match in re.finditer(r"\b\d+\s*(?:day|days|week|weeks|month|months|year|years)\b", lowered):
+            prefix = lowered[max(0, match.start() - 5) : match.start()]
+            if "/" in prefix or "per " in prefix:
+                continue
+            return raw_text[match.start() : match.end()]
+        return DEFAULT_DURATION
+
+    def infer_estimation(raw_text: str) -> str:
+        match = re.search(
+            r"(?:estimation|estimate|total|cost(?:s)?)\s*[:=-]?\s*([^\n,;]+)",
+            raw_text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            candidate = match.group(1).strip()
+            if re.search(r"\d", candidate):
+                return candidate
+        return DEFAULT_ESTIMATION
+
+    def infer_fee_row_from_free_text(raw_text: str) -> dict[str, str]:
+        text = raw_text.strip()
+        return {
+            "team": DEFAULT_TEAM,
+            "fee_type": infer_fee_type(text),
+            "role": infer_role(text),
+            "fee": infer_fee(text, infer_fee_type(text)),
+            "allocation": infer_allocation(text),
+            "duration": infer_duration(text),
+            "estimation": infer_estimation(text),
+        }
+
     def parse_fee_row_text(raw_text: str) -> dict[str, str]:
         text = raw_text.strip()
         if text.startswith("- "):
             text = text[2:].strip()
         if text.startswith("|") and text.endswith("|"):
             text = text[1:-1].strip()
+        if "|" not in text:
+            return infer_fee_row_from_free_text(text)
         parts = [part.strip() for part in text.split("|")]
         parts = [part for part in parts if part]
 
@@ -152,19 +256,19 @@ def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
         # 2) Team|Role|Fee|Allocation|Duration|Estimation
         # 3) Role|Fee|Allocation|Duration|Estimation
         if len(parts) >= 7:
-            _, role, fee_type, fee, allocation, duration, estimation = parts[:7]
+            team, role, fee_type, fee, allocation, duration, estimation = parts[:7]
         elif len(parts) == 6:
-            _, role, fee, allocation, duration, estimation = parts
+            team, role, fee, allocation, duration, estimation = parts
             fee_type = DEFAULT_FEE_TYPE
         elif len(parts) == 5:
             role, fee, allocation, duration, estimation = parts
             fee_type = DEFAULT_FEE_TYPE
+            team = DEFAULT_TEAM
         else:
-            raise ValueError(
-                "Fee schedule row text must contain at least 5 pipe-separated columns."
-            )
+            return infer_fee_row_from_free_text(text)
 
         return {
+            "team": team,
             "fee_type": fee_type,
             "role": role,
             "fee": fee,
@@ -178,8 +282,10 @@ def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
             row_input = parse_fee_row_text(item)
         elif isinstance(item, dict):
             row_input = item
+        elif isinstance(item, (int, float)):
+            row_input = parse_fee_row_text(str(item))
         else:
-            raise ValueError("Each fee_schedule item must be an object or pipe-separated string.")
+            raise ValueError("Each fee_schedule item must be an object or string.")
 
         fee_type = str(row_input.get("fee_type", DEFAULT_FEE_TYPE)).strip().lower() or DEFAULT_FEE_TYPE
         if fee_type not in VALID_FEE_TYPES:
@@ -188,18 +294,22 @@ def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
         fee = str(row_input.get("fee", "")).strip()
         if not fee and fee_type == DEFAULT_FEE_TYPE:
             fee = DEFAULT_DAILY_FEE
+        elif not fee:
+            fee = DEFAULT_FEE_FALLBACK_TEXT
         row = {
+            "team": str(row_input.get("team", DEFAULT_TEAM)).strip() or DEFAULT_TEAM,
             "fee_type": fee_type,
-            "role": str(row_input.get("role", "")).strip(),
+            "role": str(row_input.get("role", "")).strip() or DEFAULT_ROLE,
             "fee": fee,
             "allocation": str(
                 row_input.get("allocation", row_input.get("schedule", ""))
             ).strip()
             or DEFAULT_WEEKLY_SCHEDULE,
-            "duration": str(row_input.get("duration", "")).strip(),
+            "duration": str(row_input.get("duration", "")).strip() or DEFAULT_DURATION,
             "estimation": str(
                 row_input.get("estimation", row_input.get("cost_estimation", ""))
-            ).strip(),
+            ).strip()
+            or DEFAULT_ESTIMATION,
         }
         rows.append(row)
     return rows
@@ -405,7 +515,9 @@ def format_numeric_with_units(total: float, prefix: str, suffix: str, decimals: 
     if prefix:
         return f"{prefix}{number_text}"
     if suffix:
-        if suffix in {"€", "$", "£", "%"}:
+        if suffix in {"€", "$", "£", "%"} or any(
+            suffix.startswith(f"{currency_symbol}/") for currency_symbol in ("€", "$", "£")
+        ):
             return f"{number_text}{suffix}"
         return f"{number_text} {suffix}"
     return number_text
@@ -437,7 +549,8 @@ def format_fee_schedule_rows(rows: list[dict[str, str]]) -> str:
     rendered = []
     for row in rows:
         rendered.append(
-            "| {role} | {fee} | {allocation} | {duration} | {estimation} |".format(
+            "| {team} | {role} | {fee} | {allocation} | {duration} | {estimation} |".format(
+                team=row.get("team", "1"),
                 role=row.get("role", ""),
                 fee=row.get("fee", ""),
                 allocation=row.get("allocation", ""),
@@ -450,13 +563,18 @@ def format_fee_schedule_rows(rows: list[dict[str, str]]) -> str:
 
 def format_fee_totals_row(rows: list[dict[str, str]]) -> str:
     if not rows:
-        return "| Totals | - | - | - | - |"
+        return "| Project Costs | - | - | - | - | TOTAL - |"
 
     fee_total = sum_column([row.get("fee", "") for row in rows])
     allocation_total = sum_column([row.get("allocation", "") for row in rows])
     duration_total = sum_column([row.get("duration", "") for row in rows])
     estimation_total = sum_column([row.get("estimation", "") for row in rows])
-    return f"| Totals | {fee_total} | {allocation_total} | {duration_total} | {estimation_total} |"
+    member_count = len(rows)
+    estimation_cell = f"TOTAL {estimation_total}" if estimation_total != "-" else "TOTAL -"
+    return (
+        f"| Project Costs | {member_count} members (minimum) | {fee_total} | "
+        f"{allocation_total} | {duration_total} | {estimation_cell} |"
+    )
 
 
 def build_template_values(payload: dict[str, Any]) -> dict[str, str]:
@@ -766,6 +884,7 @@ def prompt_fee_schedule_rows(
         fee_type = prompt_choice("  Fee type", VALID_FEE_TYPES, DEFAULT_FEE_TYPE)
         rows.append(
             {
+                "team": prompt_text("  Team", required=True, default="1"),
                 "fee_type": fee_type,
                 "role": prompt_text("  Role", required=True),
                 "fee": prompt_text(
@@ -783,8 +902,8 @@ def prompt_fee_schedule_rows(
             }
         )
     print("\nFee Schedule Table Preview")
-    print("| Role | Fee | Allocation | duration | Estimation |")
-    print("| --- | --- | --- | --- | --- |")
+    print("| Team | Role | Fee | Allocation | Duration | Costs Estimation |")
+    print("| --- | --- | --- | --- | --- | --- |")
     print(format_fee_schedule_rows(rows))
     print(format_fee_totals_row(rows))
     return rows
