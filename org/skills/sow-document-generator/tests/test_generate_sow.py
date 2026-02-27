@@ -224,6 +224,20 @@ class TestGenerateSow(unittest.TestCase):
         totals = self.mod.format_fee_totals_row(payload["fee_schedule"])
         self.assertEqual(totals, "| Totals | 1200€ | 10 days/week | 8 weeks | 20400 EUR |")
 
+    def test_pipe_separated_fee_rows_are_parsed(self) -> None:
+        raw = self.base_raw_payload()
+        raw["fee_schedule"] = [
+            "- Engineering | Developer 1 | 650 EUR/day | 4 days/week | 3 months | 31200 EUR",
+            "- Engineering | Developer 2 | 650 EUR/day | 4 days/week | 3 months | 31200 EUR",
+            "- Design | Product Designer | 650 EUR/day | 4 days/week | 3 months | 31200 EUR",
+            "- Product | Product Manager | 650 EUR/day | 4 days/week | 3 months | 31200 EUR"
+        ]
+        payload = self.mod.normalize_payload(raw, self.contractor_defaults())
+        rows = self.mod.format_fee_schedule_rows(payload["fee_schedule"])
+        totals = self.mod.format_fee_totals_row(payload["fee_schedule"])
+        self.assertIn("| Developer 1 | 650 EUR/day | 4 days/week | 3 months | 31200 EUR |", rows)
+        self.assertEqual(totals, "| Totals | 2600 EUR/day | 16 days/week | 12 months | 124800 EUR |")
+
     def test_legal_override_replaces_default(self) -> None:
         raw = self.base_raw_payload()
         raw["overrides"] = {

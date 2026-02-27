@@ -131,30 +131,74 @@ def ensure_string_list(value: Any) -> list[str]:
 
 
 def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
+    if isinstance(value, str):
+        # Accept pipe-separated text blocks for compatibility with prompt-derived inputs.
+        value = [line for line in value.splitlines() if line.strip()]
     if not isinstance(value, list):
-        raise ValueError("fee_schedule must be a list.")
+        raise ValueError("fee_schedule must be a list or multiline string.")
     rows: list[dict[str, str]] = []
+
+    def parse_fee_row_text(raw_text: str) -> dict[str, str]:
+        text = raw_text.strip()
+        if text.startswith("- "):
+            text = text[2:].strip()
+        if text.startswith("|") and text.endswith("|"):
+            text = text[1:-1].strip()
+        parts = [part.strip() for part in text.split("|")]
+        parts = [part for part in parts if part]
+
+        # Supported text layouts:
+        # 1) Team|Role|Fee Type|Fee|Allocation|Duration|Estimation
+        # 2) Team|Role|Fee|Allocation|Duration|Estimation
+        # 3) Role|Fee|Allocation|Duration|Estimation
+        if len(parts) >= 7:
+            _, role, fee_type, fee, allocation, duration, estimation = parts[:7]
+        elif len(parts) == 6:
+            _, role, fee, allocation, duration, estimation = parts
+            fee_type = DEFAULT_FEE_TYPE
+        elif len(parts) == 5:
+            role, fee, allocation, duration, estimation = parts
+            fee_type = DEFAULT_FEE_TYPE
+        else:
+            raise ValueError(
+                "Fee schedule row text must contain at least 5 pipe-separated columns."
+            )
+
+        return {
+            "fee_type": fee_type,
+            "role": role,
+            "fee": fee,
+            "allocation": allocation,
+            "duration": duration,
+            "estimation": estimation,
+        }
+
     for item in value:
-        if not isinstance(item, dict):
-            raise ValueError("Each fee_schedule item must be an object.")
-        fee_type = str(item.get("fee_type", DEFAULT_FEE_TYPE)).strip().lower() or DEFAULT_FEE_TYPE
+        if isinstance(item, str):
+            row_input = parse_fee_row_text(item)
+        elif isinstance(item, dict):
+            row_input = item
+        else:
+            raise ValueError("Each fee_schedule item must be an object or pipe-separated string.")
+
+        fee_type = str(row_input.get("fee_type", DEFAULT_FEE_TYPE)).strip().lower() or DEFAULT_FEE_TYPE
         if fee_type not in VALID_FEE_TYPES:
             choices = ", ".join(VALID_FEE_TYPES)
             raise ValueError(f"Invalid fee_type '{fee_type}'. Expected one of: {choices}.")
-        fee = str(item.get("fee", "")).strip()
+        fee = str(row_input.get("fee", "")).strip()
         if not fee and fee_type == DEFAULT_FEE_TYPE:
             fee = DEFAULT_DAILY_FEE
         row = {
             "fee_type": fee_type,
-            "role": str(item.get("role", "")).strip(),
+            "role": str(row_input.get("role", "")).strip(),
             "fee": fee,
             "allocation": str(
-                item.get("allocation", item.get("schedule", ""))
+                row_input.get("allocation", row_input.get("schedule", ""))
             ).strip()
             or DEFAULT_WEEKLY_SCHEDULE,
-            "duration": str(item.get("duration", "")).strip(),
+            "duration": str(row_input.get("duration", "")).strip(),
             "estimation": str(
-                item.get("estimation", item.get("cost_estimation", ""))
+                row_input.get("estimation", row_input.get("cost_estimation", ""))
             ).strip(),
         }
         rows.append(row)
