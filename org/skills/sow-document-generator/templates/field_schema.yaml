@@ -30,14 +30,14 @@
     "fee_type",
     "role",
     "fee",
-    "schedule",
+    "allocation",
     "duration",
-    "cost_estimation"
+    "estimation"
   ],
   "defaults": {
     "fee_type": "daily",
     "daily_fee": "600€",
-    "schedule": "5 days/week",
+    "allocation": "5 days/week",
     "payment_method": "wired transfer / on-chain",
     "date_format": "DD/MM/YYYY"
   },

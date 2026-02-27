@@ -145,13 +145,17 @@ def ensure_fee_rows(value: Any) -> list[dict[str, str]]:
         if not fee and fee_type == DEFAULT_FEE_TYPE:
             fee = DEFAULT_DAILY_FEE
         row = {
-            "team": str(item.get("team", "")).strip(),
             "fee_type": fee_type,
             "role": str(item.get("role", "")).strip(),
             "fee": fee,
-            "schedule": str(item.get("schedule", "")).strip() or DEFAULT_WEEKLY_SCHEDULE,
+            "allocation": str(
+                item.get("allocation", item.get("schedule", ""))
+            ).strip()
+            or DEFAULT_WEEKLY_SCHEDULE,
             "duration": str(item.get("duration", "")).strip(),
-            "cost_estimation": str(item.get("cost_estimation", "")).strip(),
+            "estimation": str(
+                item.get("estimation", item.get("cost_estimation", ""))
+            ).strip(),
         }
         rows.append(row)
     return rows
@@ -327,28 +331,97 @@ def format_numbered_list(items: list[str]) -> str:
     return "\n".join(f"{index}. {item}" for index, item in enumerate(items, start=1))
 
 
+def parse_number_with_units(raw_value: str) -> tuple[float, str, str, int] | None:
+    text = str(raw_value).strip()
+    if not text:
+        return None
+    match = re.search(r"-?\d+(?:[.,]\d+)?", text)
+    if not match:
+        return None
+    number_token = match.group(0)
+    decimals = 0
+    if "." in number_token:
+        decimals = len(number_token.split(".", 1)[1])
+    elif "," in number_token:
+        decimals = len(number_token.split(",", 1)[1])
+    number = float(number_token.replace(",", "."))
+    prefix = text[: match.start()].strip()
+    suffix = text[match.end() :].strip()
+    return number, prefix, suffix, decimals
+
+
+def format_numeric_with_units(total: float, prefix: str, suffix: str, decimals: int) -> str:
+    if decimals <= 0:
+        number_text = str(int(round(total)))
+    else:
+        number_text = f"{total:.{decimals}f}".rstrip("0").rstrip(".")
+
+    if prefix and suffix:
+        return f"{prefix}{number_text} {suffix}"
+    if prefix:
+        return f"{prefix}{number_text}"
+    if suffix:
+        if suffix in {"€", "$", "£", "%"}:
+            return f"{number_text}{suffix}"
+        return f"{number_text} {suffix}"
+    return number_text
+
+
+def sum_column(values: list[str]) -> str:
+    parsed = [parse_number_with_units(value) for value in values]
+    if not parsed or any(item is None for item in parsed):
+        return "-"
+
+    first = parsed[0]
+    assert first is not None
+    _, prefix, suffix, decimals = first
+    total = 0.0
+    max_decimals = decimals
+
+    for item in parsed:
+        assert item is not None
+        number, current_prefix, current_suffix, current_decimals = item
+        if current_prefix != prefix or current_suffix != suffix:
+            return "-"
+        total += number
+        max_decimals = max(max_decimals, current_decimals)
+
+    return format_numeric_with_units(total, prefix, suffix, max_decimals)
+
+
 def format_fee_schedule_rows(rows: list[dict[str, str]]) -> str:
     rendered = []
     for row in rows:
         rendered.append(
-            "| {team} | {role} | {fee_type} | {fee} | {schedule} | {duration} | {cost_estimation} |".format(
-                team=row.get("team", ""),
+            "| {role} | {fee} | {allocation} | {duration} | {estimation} |".format(
                 role=row.get("role", ""),
-                fee_type=row.get("fee_type", "").title(),
                 fee=row.get("fee", ""),
-                schedule=row.get("schedule", ""),
+                allocation=row.get("allocation", ""),
                 duration=row.get("duration", ""),
-                cost_estimation=row.get("cost_estimation", ""),
+                estimation=row.get("estimation", ""),
             )
         )
     return "\n".join(rendered)
+
+
+def format_fee_totals_row(rows: list[dict[str, str]]) -> str:
+    if not rows:
+        return "| Totals | - | - | - | - |"
+
+    fee_total = sum_column([row.get("fee", "") for row in rows])
+    allocation_total = sum_column([row.get("allocation", "") for row in rows])
+    duration_total = sum_column([row.get("duration", "") for row in rows])
+    estimation_total = sum_column([row.get("estimation", "") for row in rows])
+    return f"| Totals | {fee_total} | {allocation_total} | {duration_total} | {estimation_total} |"
 
 
 def build_template_values(payload: dict[str, Any]) -> dict[str, str]:
     values = {key: str(value) for key, value in payload.items() if isinstance(value, str)}
     values["non_working_days_bullets"] = format_bullet_list(payload.get("non_working_days", []))
     values["deliverables_numbered"] = format_numbered_list(payload.get("deliverables", []))
-    values["fee_schedule_rows"] = format_fee_schedule_rows(payload.get("fee_schedule", []))
+    fee_rows = payload.get("fee_schedule", [])
+    values["fee_schedule_rows"] = format_fee_schedule_rows(fee_rows)
+    values["fee_totals_row"] = format_fee_totals_row(fee_rows)
     return values
 
 
@@ -649,7 +722,6 @@ def prompt_fee_schedule_rows(
         fee_type = prompt_choice("  Fee type", VALID_FEE_TYPES, DEFAULT_FEE_TYPE)
         rows.append(
             {
-                "team": prompt_text("  Team"),
                 "fee_type": fee_type,
                 "role": prompt_text("  Role", required=True),
                 "fee": prompt_text(
@@ -657,15 +729,20 @@ def prompt_fee_schedule_rows(
                     required=fee_type != DEFAULT_FEE_TYPE,
                     default=DEFAULT_DAILY_FEE if fee_type == DEFAULT_FEE_TYPE else None,
                 ),
-                "schedule": prompt_text("  Schedule", required=True, default=DEFAULT_WEEKLY_SCHEDULE),
+                "allocation": prompt_text(
+                    "  Allocation",
+                    required=True,
+                    default=DEFAULT_WEEKLY_SCHEDULE,
+                ),
                 "duration": prompt_text("  Duration", required=True),
-                "cost_estimation": prompt_text("  Costs Estimation", required=True),
+                "estimation": prompt_text("  Estimation", required=True),
             }
         )
     print("\nFee Schedule Table Preview")
-    print("| Team | Role | Fee Type | Fee | Schedule | Duration | Costs Estimation |")
-    print("| --- | --- | --- | --- | --- | --- | --- |")
+    print("| Role | Fee | Allocation | duration | Estimation |")
+    print("| --- | --- | --- | --- | --- |")
     print(format_fee_schedule_rows(rows))
+    print(format_fee_totals_row(rows))
     return rows
 
 
