@@ -1,7 +1,7 @@
 ---
 name: sow-document-generator
 description: Use when creating or filling a Statement of Work (SOW) document from the project SOW template with prompted field inputs and file outputs. Do not use for generic proposal writing, contract legal review, or non-SOW documents.
-version: 0.1.0
+version: 0.1.2
 owner: Alvaro Bezerra
 ---
 
@@ -37,6 +37,10 @@ Generate a fully filled Statement of Work from a canonical project template by c
   - `{timestamp}_{client_slug}_{project_slug}_sow.md`
 - Filled DOCX SOW in same folder:
   - `{timestamp}_{client_slug}_{project_slug}_sow.docx`
+- When the user requests Notion output (page content), tables must use Notion block syntax:
+  - Use `<table>...</table>` with table rows/cells.
+  - Do not use markdown pipe tables (`| ... |`) for Notion content.
+- After generating output artifacts, always ask whether to send/publish the generated SOW to Notion.
 
 # Workflow
 
@@ -58,6 +62,8 @@ Generate a fully filled Statement of Work from a canonical project template by c
 7. Save both artifacts under `docs-output/sow` unless `--output-dir` is provided.
 8. Use `DD/MM/YYYY` date format in prompts and output.
 9. If partial data is provided, ask only missing fields to complete generation quickly.
+10. If output target is Notion, emit fee schedule and other tabular content using Notion `<table>` blocks instead of pipe tables.
+11. Immediately after successful generation, ask: "Do you want me to send this to Notion now?"
 
 # Examples
 
