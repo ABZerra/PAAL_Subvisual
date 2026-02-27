@@ -12,13 +12,15 @@ Structured input file example (`--input sample.json`):
 ```json
 {
   "prepared_for": "Acme Corp",
-  "date_issued": "2026-03-02",
+  "date_issued": "02/03/2026",
+  "prepared_by_name": "Roberto Machado",
+  "prepared_by_role": "CEO",
   "client_legal_name": "Acme Corp, Inc.",
   "project_title": "Website Redesign and Development",
   "project_summary": "website redesign and development services",
-  "start_date": "2026-03-10",
-  "end_date": "2026-04-10",
-  "non_working_days": ["2026-03-19"],
+  "start_date": "10/03/2026",
+  "end_date": "10/04/2026",
+  "non_working_days": ["19/03/2026"],
   "project_description": "Complete redesign and frontend/backend implementation.",
   "deliverables": [
     "Website redesign",
@@ -28,17 +30,19 @@ Structured input file example (`--input sample.json`):
   "fee_schedule": [
     {
       "team": "Product",
+      "fee_type": "daily",
       "role": "Product Manager",
-      "fee": "850 EUR/day",
-      "schedule": "2 days/week",
+      "fee": "600€",
+      "schedule": "5 days/week",
       "duration": "4 weeks",
       "cost_estimation": "6800 EUR"
     },
     {
       "team": "Engineering",
+      "fee_type": "daily",
       "role": "Developer",
-      "fee": "850 EUR/day",
-      "schedule": "4 days/week",
+      "fee": "600€",
+      "schedule": "5 days/week",
       "duration": "4 weeks",
       "cost_estimation": "13600 EUR"
     }
@@ -52,13 +56,12 @@ Structured input file example (`--input sample.json`):
     "email": "finance@acme.com"
   },
   "execution": {
-    "company_signing_date": "2026-03-02",
+    "company_signing_date": "02/03/2026",
     "client_name": "Acme Corp, Inc.",
-    "client_signing_date": "2026-03-02",
+    "client_signing_date": "02/03/2026",
     "client_address": "100 Market Street, San Francisco, CA"
   },
   "overrides": {
-    "payment_method": "Wired transfer",
     "invoice_model": "Monthly fee"
   }
 }

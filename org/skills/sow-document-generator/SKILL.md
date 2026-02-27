@@ -14,6 +14,7 @@ Generate a fully filled Statement of Work from a canonical project template by c
 - The user asks to create, fill, or update an SOW from the project template.
 - Required SOW fields must be collected interactively before generation.
 - The workflow must output files (not only chat text), including `.md` and `.docx`.
+- The workflow must default missing fee details (`daily`, `600€`, `5 days/week`) and fixed payment method (`wired transfer / on-chain`).
 
 # When NOT to use
 
@@ -55,6 +56,8 @@ Generate a fully filled Statement of Work from a canonical project template by c
 5. Render Markdown from `templates/new_statement_of_work_template.md`.
 6. Convert rendered Markdown to DOCX.
 7. Save both artifacts under `docs-output/sow` unless `--output-dir` is provided.
+8. Use `DD/MM/YYYY` date format in prompts and output.
+9. If partial data is provided, ask only missing fields to complete generation quickly.
 
 # Examples
 
