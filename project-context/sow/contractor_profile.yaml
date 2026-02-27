@@ -1,0 +1,17 @@
+{
+  "company_name": "Subvisual, Lda.",
+  "company_address": "Polo de Negocios de Braga, Av. Dom Joao II 404 4o andar, Sala 45; 4715-275 Braga",
+  "country": "Portugal",
+  "phone": "+351 916748994",
+  "email": "contact@subvisual.com",
+  "website": "subvisual.com",
+  "prepared_by_name": "Roberto Machado",
+  "prepared_by_role": "CEO",
+  "payment": {
+    "company_name": "Subvisual Lda.",
+    "bank_name": "Banco Santander Totta S.A.",
+    "iban": "PT50 0018 000341597972020 37",
+    "swift": "TOTAPTPL",
+    "wallet": "subvisual.eth"
+  }
+}
