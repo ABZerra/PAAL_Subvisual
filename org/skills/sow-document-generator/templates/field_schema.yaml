@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0.0",
+  "required_fields": [
+    "prepared_for",
+    "date_issued",
+    "client_legal_name",
+    "project_summary",
+    "project_title",
+    "start_date",
+    "end_date",
+    "deliverables",
+    "fee_schedule",
+    "bill_to_client",
+    "bill_to_address",
+    "bill_to_email",
+    "company_signing_date",
+    "client_signatory_name",
+    "client_signing_date",
+    "client_address"
+  ],
+  "optional_fields": [
+    "non_working_days",
+    "statement_of_confidentiality",
+    "deliveries_clause",
+    "client_responsibilities_text",
+    "invoice_procedures_text",
+    "payment_method",
+    "company_address"
+  ],
+  "required_fee_row_fields": [
+    "role",
+    "fee",
+    "schedule",
+    "duration",
+    "cost_estimation"
+  ],
+  "sections": [
+    {
+      "name": "contractor_profile",
+      "title": "Contractor Profile"
+    },
+    {
+      "name": "prepared_for_and_issue",
+      "title": "Prepared For and Date Issued"
+    },
+    {
+      "name": "introduction_background",
+      "title": "Introduction and Background"
+    },
+    {
+      "name": "period_of_performance",
+      "title": "Period of Performance"
+    },
+    {
+      "name": "scope_of_work",
+      "title": "Scope of Work"
+    },
+    {
+      "name": "fee_schedule",
+      "title": "Fee Schedule"
+    },
+    {
+      "name": "bill_to",
+      "title": "Bill To"
+    },
+    {
+      "name": "legal_boilerplate",
+      "title": "Legal and Invoice Boilerplate"
+    },
+    {
+      "name": "execution",
+      "title": "Execution and Signatures"
+    }
+  ],
+  "validation_rules": {
+    "start_end_date_order": true,
+    "minimum_fee_rows": 1,
+    "no_unresolved_placeholders": true
+  }
+}
